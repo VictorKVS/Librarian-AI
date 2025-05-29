@@ -1,0 +1,24 @@
+default_model: openai
+
+openai:
+  enabled: true
+  api_key: "sk-..."
+  model: "gpt-4"
+
+yandex:
+  enabled: true
+  api_key: "..."
+  folder_id: "..."
+
+deepseek:
+  enabled: true
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-chat"
+
+local:
+  enabled: true
+  model_path: "NousResearch/llama-2-7b-hf"
+  device: "cuda"
+
+dummy:
+  enabled: true

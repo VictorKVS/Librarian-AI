@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+
+  # 📦 PostgreSQL + pgvector
+  postgres:
+    image: ankane/pgvector
+    container_name: librarian_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: librarian
+      POSTGRES_PASSWORD: secretpass
+      POSTGRES_DB: librarian_db
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  # ⚡ Redis (кэш, очереди, PubSub)
+  redis:
+    image: redis:6
+    container_name: librarian_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  # 🔍 Qdrant (векторная БД)
+  qdrant:
+    image: qdrant/qdrant
+    container_name: librarian_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # 🌐 Web-интерфейс + REST API
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: librarian_web
+    command: uvicorn web.dashboard:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      DB_TYPE: postgresql
+      DB_HOST: postgres
+      DB_NAME: librarian_db
+      DB_USER: librarian
+      DB_PASSWORD: secretpass
+      REDIS_HOST: redis
+      QDRANT_HOST: qdrant
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+
+  # 🔄 Фоновый воркер / обновления / auto-train
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: librarian_worker
+    command: python utils/updater.py
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+    environment:
+      DB_HOST: postgres
+      DB_USER: librarian
+      DB_PASSWORD: secretpass
+
+volumes:
+  pg_data:
+  qdrant_data:
+
+# Контейнер	Назначение	Входные данные	Выходные данные
+#redis	Очереди / кэш	Задачи обновления, логика цепочек	Буферизация, PubSub
+#qdrant	Векторная БД	Embedding-запросы, поиск	ID подходящих chunks, топ-N
+#web	REST API / Web Dashboard	Запросы от CLI/Web/Telegram	Ответы моделей, графы, JSON
+#worker	Фоновые задачи, автообновления	Обучающие данные, ответы с высоким качеством	Новый checkpoint / обновления моделей

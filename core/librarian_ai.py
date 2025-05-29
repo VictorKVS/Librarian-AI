@@ -1,63 +1,70 @@
-# 📄 Файл: re_ranker.py
-# 📂 Путь установки: librarian_ai/core/re_ranker.py
-# 📌 Назначение: повторное ранжирование (Re-Ranking) результатов поиска
-# 📥 Получает: список кандидатов от retriever (векторный поиск)
-# ⚙️ Делает: пересчитывает релевантность с помощью CrossEncoder (или модели rerank)
-# 📤 Передаёт: отсортированные по убыванию релевантности фрагменты (в LLM или визуализацию)
+# 📄 core/librarian_ai.py
+from typing import Dict, List, Optional
+from db.storage import get_session_entities, get_knowledge_graph
+from llm.llm_router import query_llm
+from config.secrets import ANALYSIS_PROVIDER
+import logging
 
-# 🚨 Потенциальные улучшения:
-# 1. 📘 Выбор оптимальной модели CrossEncoder (например, ruBERT, DeepPavlov для РФ)
-# 2. 🔄 Оптимизация: batched rerank, многопоточность, кэширование
-# 3. 🇷🇺 Поддержка русского языка через мультиязычные модели
-# 4. 🔬 Предобработка: удаление пунктуации, лемматизация, стоп-слова
+logger = logging.getLogger(__name__)
 
-from typing import List, Dict
-from sentence_transformers import CrossEncoder
-import string
-from pymorphy2 import MorphAnalyzer
 
-morph = MorphAnalyzer()
+class LibrarianAI:
+    def __init__(self, provider: Optional[str] = None):
+        self.provider = provider or ANALYSIS_PROVIDER
 
-class ReRanker:
-    def __init__(self, model_name="DeepPavlov/rubert-base-cased-conversational"):
-        self.model = CrossEncoder(model_name)
-
-    def lemmatize(self, word: str) -> str:
-        """Приводит слово к нормальной форме."""
-        return morph.parse(word)[0].normal_form
-
-    def preprocess(self, text: str) -> str:
-        """Нормализация текста: лемматизация, очистка от пунктуации и цифр."""
-        words = text.split()
-        clean_words = [self.lemmatize(w) for w in words if w.isalpha()]
-        return ' '.join(clean_words)
-
-    def rerank(self, query: str, docs: List[Dict], top_k: int = 5) -> List[Dict]:
+    def analyze_session(self, session_id: str) -> Dict:
         """
-        Ранжирует документы по релевантности.
-        :param query: исходный запрос
-        :param docs: список документов с ключом 'text'
-        :param top_k: количество топ-документов
-        :return: список top_k документов по убыванию релевантности
+        Анализирует сессию: извлекает сущности, граф знаний и формирует логические выводы
         """
-        query_clean = self.preprocess(query)
-        pairs = [[query_clean, self.preprocess(doc["text"])] for doc in docs]
-        scores = self.model.predict(pairs)
+        logger.info(f"🔍 Анализ сессии: {session_id}")
 
-        for i, score in enumerate(scores):
-            docs[i]["score"] = float(score)
+        entities = get_session_entities(session_id)
+        graph = get_knowledge_graph(session_id)
 
-        return sorted(docs, key=lambda x: x["score"], reverse=True)[:top_k]
+        if not entities:
+            logger.warning("❌ Нет сущностей в сессии")
+            return {"insights": [], "actions": [], "status": "no_entities"}
 
+        summary_prompt = self._build_prompt(entities, graph)
+        logger.debug(f"🧠 Промт LLM:\n{summary_prompt}")
 
-if __name__ == "__main__":
-    reranker = ReRanker()
-    query = "обработка персональных данных"
-    candidates = [
-        {"text": "Персональные данные должны храниться согласно 152-ФЗ."},
-        {"text": "Шифрование — ключевой механизм защиты."},
-        {"text": "Персональные данные включают ФИО, СНИЛС и адрес проживания."}
-    ]
-    top = reranker.rerank(query, candidates)
-    for doc in top:
-        print(f"⭐ {doc['score']:.4f} | {doc['text']}")
+        response = query_llm(summary_prompt, provider=self.provider)
+
+        return {
+            "insights": self._extract_insights(response),
+            "actions": self._extract_actions(response),
+            "raw": response
+        }
+
+    def _build_prompt(self, entities: List[Dict], graph: Dict) -> str:
+        """
+        Формирует промт для LLM на основе сущностей и графа
+        """
+        entity_text = "\n".join([f"- {e['type']}: {e['value']}" for e in entities])
+        graph_summary = f"Обнаружено {len(graph.get('nodes', []))} узлов и {len(graph.get('edges', []))} связей."
+
+        return f"""
+        Проведи анализ сессии.
+        🧩 Сущности:
+        {entity_text}
+        
+        🔗 Граф знаний:
+        {graph_summary}
+        
+        📌 Вопросы:
+        1. Какие ключевые выводы можно сделать?
+        2. Есть ли признаки нарушений, угроз, закономерностей?
+        3. Какие действия ты рекомендуешь?
+
+        Ответ представь в формате:
+        - [Вывод 1] ...
+        - [Рекомендация 1] ...
+        """
+
+    def _extract_insights(self, response: str) -> List[str]:
+        """Извлекает ключевые выводы"""
+        return [line.strip("-• ") for line in response.splitlines() if "вывод" in line.lower()]
+
+    def _extract_actions(self, response: str) -> List[str]:
+        """Извлекает рекомендации"""
+        return [line.strip("-• ") for line in response.splitlines() if "рекоменд" in line.lower()]
