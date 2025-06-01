@@ -65,7 +65,7 @@ librarian_ai/
 │   ├── tools/                           # 🛠️ Инструменты и утилиты
 │   │   ├──__init__.py  
 │   │   ├── async_tasks.py               # Celery-задачи: /status/{task_id}
-│   │   ├── embedder.py                  # Векторизация текста
+
 │   │   ├── extractor.py                 # Извлечение сущностей (NER)
 │   │   ├── graph_tools.py               # Граф знаний
 │   │   ├── loader.py                    # Загрузка и анализ файлов
@@ -98,17 +98,21 @@ librarian_ai/
 │   └── long_term_memory/               # Долгосрочная память (Graph, MemoryItem)
 
 ├── librarian_ai.py         # Основной аналитик AI
+│    ├── README.md
+│    ├── __init__.py
+  
+│    ├──llm/
+│    │    ├── llm_router.py                    # 🔀 Универсальный маршрутизатор LLM
+│    │    ├── base_llm.py                      # 📦 Базовый класс клиента LLM (по желанию)
+│    │    ├── local_model.py                   # 🧠 Упрощённый интерфейс для локальных моделей
+│    │    └── providers/                       # 🌐 Конкретные провайдеры LLM
+│    │        ├── openrouter_gpt.py           # OpenRouter API (Weaver, Dolphin и др.)
+│    │        ├── gigachat.py                 # GigaChat от Сбера
+│    │        ├── yandex_gpt.py               # YandexGPT
+│    │        ├── mistral_local.py            # Локальная модель Mistral
+│    │        └── lmstudio_api.py             # (опц.) LM Studio через REST API
 
-├──llm/
-│    ├── llm_router.py                    # 🔀 Универсальный маршрутизатор LLM
-│    ├── base_llm.py                      # 📦 Базовый класс клиента LLM (по желанию)
-│    ├── local_model.py                   # 🧠 Упрощённый интерфейс для локальных моделей
-│    └── providers/                       # 🌐 Конкретные провайдеры LLM
-│        ├── openrouter_gpt.py           # OpenRouter API (Weaver, Dolphin и др.)
-│        ├── gigachat.py                 # GigaChat от Сбера
-│        ├── yandex_gpt.py               # YandexGPT
-│        ├── mistral_local.py            # Локальная модель Mistral
-│        └── lmstudio_api.py             # (опц.) LM Studio через REST API
+
 ├── storage/                            # 📦 Альтернативные хранилища данных
 │   └── librarian.db                    # SQLite БД
 
@@ -126,6 +130,10 @@ librarian_ai/
 │   ├── test_llm_router.py              # Тест маршрутизации LLM
 │   ├── test_extractor.py               # Тест извлекателей сущностей
 │   └── test_models.py                  # Тест SQLAlchemy моделей
+
+├── tests/  
+│    ├── __init__.py                    тест , вектор
+│    ├── embedder.py                  # Векторизация текста
 
 ├── utils/                              # 🔧 Утилиты и вспомогательные инструменты
 │   ├── logger.py                       # Логгер
@@ -145,7 +153,9 @@ librarian_ai/
 │   ├── latency_test.py                 # Проверка задержки
 │   ├── quality_score.py                # Оценка качества работы
 │   └── memory_benchmark.py             # Тест потребления памяти
-
+├──.env
+├──.gitattributes
+├──cli.py
 ├── deploy_gui.py                       # 🖱️ GUI-интерфейс для развёртывания
 ├── docker-compose.yaml                 # 🐳 Docker-композиция (PostgreSQL, Qdrant, Redis)
 ├── Dockerfile.dockerfile               # 🐽 Docker-образ для контейнеризации

@@ -1,154 +1,177 @@
 # core/advanced_architecture.py
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, TypeVar
+from typing import AsyncGenerator, List, Dict
+
+import uvicorn
 from fastapi import FastAPI
-from aiogram import Bot, Dispatcher
+from pydantic import Field, validator
+from injector import inject
 
-T = TypeVar('T')
+# Импорты из пакета librarian_ai
+from librarian_ai.core.parser.chunker import TextChunker
+from librarian_ai.core.tools.embedder import Embedder
+from librarian_ai.core.processor.document_processor import DocumentProcessor, ProcessingConfig, ProcessingResult
+from librarian_ai.core.adapters.telegram_adapter import TelegramAdapter, FileType
+from librarian_ai.core.application import Application
+import uuid
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, List, Dict
 
-# ==================== УЛУЧШЕННЫЕ МОДЕЛИ ДАННЫХ ====================
+import uvicorn
+from fastapi import FastAPI
+from pydantic import Field, validator
+from injector import inject
+
+from .parser.chunker import TextChunker
+from .tools.embedder import Embedder
+from .processor.document_processor import DocumentProcessor, ProcessingConfig, ProcessingResult
+from .adapters.telegram_adapter import TelegramAdapter, FileType
+from .application import Application
+
 class AdvancedProcessingConfig(ProcessingConfig):
-    optimize_for: str = Field("quality", description="Оптимизация для quality/speed/balance")
+    optimize_for: str = Field("quality", description="Оптимизация: quality, speed или balance")
     enable_analysis: bool = Field(True, description="Включить углубленный анализ")
-    
+
     @validator('optimize_for')
     def validate_optimization(cls, v):
-        if v not in ["quality", "speed", "balance"]:
-            raise ValueError("Invalid optimization mode")
+        modes = {"quality", "speed", "balance"}
+        if v not in modes:
+            raise ValueError(f"Invalid optimization mode: {v}")
         return v
 
-# ==================== РАСШИРЕННЫЕ ИНСТРУМЕНТЫ ====================
+
 class AdvancedTextChunker(TextChunker):
     def __init__(self):
-        self.semaphore = asyncio.Semaphore(10)  # Ограничение параллельных задач
-        
+        super().__init__()
+        self.semaphore = asyncio.Semaphore(10)
+
     async def chunk(self, text: str, chunk_size: int, language: str) -> List[str]:
         async with self.semaphore:
-            # Улучшенная сегментация с учетом семантики
+            # семантическая сегментация (можно расширить)
             return await super().chunk(text, chunk_size, language)
+
 
 class BatchEmbedder(Embedder):
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         super().__init__(model_name)
         self.batch_size = 32
-        
+
     async def generate_batch(self, texts: List[str]) -> List[List[float]]:
-        """Пакетная обработка с автоматическим разделением"""
-        results = []
+        results: List[List[float]] = []
         for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i + self.batch_size]
+            batch = texts[i : i + self.batch_size]
             results.extend(await self.generate(batch))
         return results
 
-# ==================== РАСШИРЕННОЕ ЯДРО ====================
+
 class AdvancedDocumentProcessor(DocumentProcessor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.cache = {}  # Кеш результатов
-        
+        self.cache: Dict[str, ProcessingResult] = {}
+
     @asynccontextmanager
-    async def processing_session(self, config: AdvancedProcessingConfig) -> AsyncGenerator[None, None]:
-        """Контекстный менеджер для обработки"""
+    async def processing_session(self, config: AdvancedProcessingConfig) -> AsyncGenerator[str, None]:
         session_id = str(uuid.uuid4())
         try:
             yield session_id
         finally:
             self._cleanup_session(session_id)
-    
+
+    def _cleanup_session(self, session_id: str) -> None:
+        # удаляем закешированные результаты сессии
+        self.cache.pop(session_id, None)
+
     async def advanced_process(self, content: str, config: AdvancedProcessingConfig) -> ProcessingResult:
-        """Расширенная обработка с поддержкой сессий"""
         async with self.processing_session(config) as session_id:
             if config.enable_analysis:
-                return await self._analyze_content(content, config, session_id)
-            return await super().process(content, config)
+                result = await self._analyze_content(content, config, session_id)
+            else:
+                result = await super().process(content, config)
+            self.cache[session_id] = result
+            return result
 
-# ==================== УЛУЧШЕННЫЕ АДАПТЕРЫ ====================
+
 class AdvancedTelegramAdapter(TelegramAdapter):
-    SUPPORTED_TYPES = [FileType.TXT, FileType.PDF]
-    
+    SUPPORTED_TYPES = {FileType.TXT, FileType.PDF}
+
     async def handle_advanced_message(self, message: Dict) -> Dict:
-        """Расширенная обработка с проверкой типов"""
         if message.get("file_type") not in self.SUPPORTED_TYPES:
             return {"error": "Unsupported file type"}
         return await super().handle_message(message)
 
+
 class RESTAdapter:
     @inject
-    def __init__(self, processor: DocumentProcessor):
+    def __init__(self, processor: AdvancedDocumentProcessor):
         self.processor = processor
         self.app = FastAPI()
         self._setup_routes()
-    
-    def _setup_routes(self):
-        @self.app.post("/v2/process")
-        async def process_endpoint(file: Dict):
-            return await self.processor.process(file["content"], ProcessingConfig())
 
-# ==================== УЛУЧШЕННАЯ ИНТЕГРАЦИЯ ====================
+    def _setup_routes(self) -> None:
+        @self.app.post("/v2/process")
+        async def process_endpoint(
+            payload: Dict,
+            optimize_for: str = "quality",
+            enable_analysis: bool = True,
+        ) -> ProcessingResult:
+            config = AdvancedProcessingConfig(
+                optimize_for=optimize_for,
+                enable_analysis=enable_analysis,
+            )
+            return await self.processor.advanced_process(
+                payload.get("content", ""), config
+            )
+
+
 class AdvancedApplication(Application):
     def __init__(self):
         super().__init__()
-        self.rest_adapter = self.injector.get(RESTAdapter)
-        self.advanced_processor = self.injector.get(AdvancedDocumentProcessor)
-        
-    async def start(self):
-        """Запуск всех сервисов"""
-        await asyncio.gather(
-            self._start_telegram(),
-            self._start_rest()
-        )
-    
-    async def _start_telegram(self):
-        bot = Bot(token="YOUR_TOKEN")
-        dp = Dispatcher(bot)
-        # ... инициализация бота
+        self.rest_adapter: RESTAdapter = self.injector.get(RESTAdapter)
+        self.advanced_processor: AdvancedDocumentProcessor = self.injector.get(AdvancedDocumentProcessor)
+        self.telegram_adapter: TelegramAdapter = self.injector.get(TelegramAdapter)
+        self.app: FastAPI = self.rest_adapter.app
 
-    async def _start_rest(self):
-        import uvicorn
-        config = uvicorn.Config(
-            self.rest_adapter.app,
-            host="0.0.0.0",
-            port=8000
-        )
+    async def start(self) -> None:
+        rest_task = asyncio.create_task(self._start_rest())
+        telegram_task = asyncio.create_task(self._start_telegram())
+        await asyncio.gather(rest_task, telegram_task)
+
+    async def _start_telegram(self) -> None:
+        # делегируем старт адаптеру
+        await self.telegram_adapter.start()
+
+    async def _start_rest(self) -> None:
+        config = uvicorn.Config(self.app, host="0.0.0.0", port=8000)
         server = uvicorn.Server(config)
         await server.serve()
 
-# ==================== ДОПОЛНИТЕЛЬНЫЕ ВОЗМОЖНОСТИ ====================
+
 class ContentAnalyzer:
     @inject
     def __init__(self, embedder: Embedder):
         self.embedder = embedder
-    
+
     async def analyze_sentiment(self, text: str) -> Dict:
-        """Анализ тональности текста"""
         embedding = await self.embedder.generate([text])
-        return {"sentiment": "positive" if sum(embedding[0]) > 0 else "negative"}
+        score = sum(embedding[0])
+        return {"sentiment": "positive" if score > 0 else "negative"}
+
 
 class ClusterManager:
     def __init__(self):
-        self.nodes = []
-    
-    async def add_node(self, processor: DocumentProcessor):
-        """Добавление узла обработки в кластер"""
+        self.nodes: List[DocumentProcessor] = []
+
+    async def add_node(self, processor: DocumentProcessor) -> None:
         self.nodes.append(processor)
 
-# ==================== ПРИМЕР ИСПОЛЬЗОВАНИЯ ====================
-async def advanced_main():
+
+# Пример запуска
+async def advanced_main() -> None:
     app = AdvancedApplication()
-    
-    # Запуск всех сервисов
     await app.start()
-    
-    # Пример расширенной обработки
-    result = await app.advanced_processor.advanced_process(
-        content="Пример текста",
-        config=AdvancedProcessingConfig(
-            optimize_for="balance",
-            enable_analysis=True
-        )
-    )
-    print(result)
+
 
 if __name__ == "__main__":
     asyncio.run(advanced_main())
