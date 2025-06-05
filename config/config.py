@@ -1,7 +1,10 @@
 # 📄 config/secrets.py
-from pydantic import BaseSettings, Field
+
+from pydantic_settings import BaseSettings
+from pydantic import Field
 from functools import lru_cache
 from typing import List, Optional
+
 
 class Settings(BaseSettings):
     # 📦 PostgreSQL
@@ -36,7 +39,7 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: List[str] = Field(default=[".pdf", ".docx", ".txt"])
 
     # 🔐 LLM-провайдеры
-    LLM_PROVIDER: str = "gigachat"  # По умолчанию GigaChat
+    LLM_PROVIDER: str = "gigachat"
     OPENROUTER_KEY: Optional[str] = None
     GIGACHAT_SECRET: Optional[str] = None
     YANDEX_API_KEY: Optional[str] = None
@@ -52,9 +55,11 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
 
+
 @lru_cache()
-def get_settings():
+def get_settings() -> Settings:
     return Settings()
+
 
 # 📌 Глобальная переменная для доступа
 settings = get_settings()
