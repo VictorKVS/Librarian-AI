@@ -1,0 +1,70 @@
+Финальная структура (с блоком деплоя)
+bash
+Копировать
+Редактировать
+librarian_ai/
+├── main.py                          # 🚀 Точка входа в систему
+├── deploy.py                        # 🔧 Скрипт автозагрузки на GitHub и Яндекс.Диск
+├── pyproject.toml                   # 📦 Метаинформация о проекте (если используется Poetry/PDM)
+├── README.md                        # 📘 Описание проекта
+├── README_DEPLOY.md                # 📘 Документация по деплою
+├── .gitignore                       # 🧹 Исключаем лишние файлы
+├── .env                             # 🛡️ (игнорируется) Персональные переменные
+├── config/
+│   ├── config.yaml                  # Основная конфигурация проекта
+│   ├── e_full.yaml                  # 📋 Паспорт агента
+│   ├── remote.yaml                  # Доступ к API/моделям
+│   └── .env.template                # 🔧 Шаблон конфигурации окружения
+├── core/
+│   ├── entity_extractor.py
+│   ├── entity_extractor_advanced.py
+│   ├── visualizer.py
+│   ├── graph_tools.py
+│   └── connector_yadisk.py         # 🔄 Интеграция с Яндекс.Диском
+├── llm/
+│   ├── llm_router.py               # 🧠 SmartRouter
+│   ├── local_model.py              # 🏠 Локальная LLM
+│   └── providers/
+│       ├── base_llm.py
+│       ├── openai_gpt.py
+│       ├── yandex_gpt.py
+│       ├── deepseek.py
+│       └── fallback_dummy.py
+├── cli/
+│   └── agent_cli.py                # Интерфейс командной строки
+├── templates/
+│   └── *.tpl                       # Шаблоны агентов/конфигурации
+├── agents/
+│   └── osint_plus/
+│       ├── 1_collector.py
+│       ├── 1_enrichers.py
+│       ├── 1_exporters.py
+│       └── 1_agent.yaml
+├── knowledge/
+│   ├── vector_store/
+│   ├── graph_cache/
+│   └── long_term_memory/
+├── telegram/
+│   └── bot.py
+├── web/
+│   ├── dashboard.py
+│   └── endpoints/
+├── storage/
+│   └── librarian.db
+└── utils/
+    ├── logger.py
+    ├── updater.py
+    └── init_script.py
+✅ Где размещаются конкретные новые файлы:
+Файл	Назначение	Расположение
+deploy.py	Скрипт деплоя	librarian_ai/deploy.py
+.env.template	Шаблон переменных окружения	librarian_ai/config/.env.template
+README_DEPLOY.md	Документация по деплою	librarian_ai/README_DEPLOY.md
+
+⚙️ Дополнительно:
+Файл .env не добавляется в репозиторий — добавь его в .gitignore
+
+В pyproject.toml можешь указать scripts или CLI-команду для запуска deploy.py
+
+Через GitHub Actions можно сделать push в репозиторий по команде.
+
