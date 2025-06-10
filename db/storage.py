@@ -1,30 +1,31 @@
-# 📄 Файл: storage.py
-# 📂 Путь: db/
-# 📌 Назначение: Инициализация базы данных PostgreSQL с pgvector, поддержкой реплики, пулами соединений, метриками и безопасным доступом к сессиям
+# 📄 Файл: db/storage.py
 
 import os
 import time
 import logging
 from contextlib import contextmanager
+from typing import List, Dict, Optional
 
-from sqlalchemy import create_engine, text, exc
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy import create_engine, text, exc, Column, String, Integer, Float, Text, DateTime, ForeignKey, JSON
+from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base, relationship
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.event import listens_for
-
 from prometheus_client import Gauge, Histogram
 
-from db.models import Base
+from datetime import datetime
 
 # 🔧 Настройка логгера
 logger = logging.getLogger("db.storage")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
-# 📊 Метрики для мониторинга
+# 📊 Метрики
 DB_CONNECTIONS = Gauge("db_connections", "Active database connections")
 DB_QUERY_TIME = Histogram("db_query_time", "DB query time (seconds)")
 
-# ⚙️ Конфигурация подключения
+# 🧱 ORM База
+Base = declarative_base()
+
+# ⚙️ Конфигурация
 class DatabaseConfig:
     def __init__(self):
         self.db_type = os.getenv("DB_TYPE", "postgresql")
@@ -48,40 +49,31 @@ class DatabaseConfig:
             return f"postgresql+psycopg2://{self.user}:{self.password}@{self.replica_host}:{self.port}/{self.name}"
         return None
 
-# 🧠 Конфигурация БД
+# 📦 Конфигурация БД
 db_config = DatabaseConfig()
 
-# 🚀 Создание движков
-def create_engine_with_config(url, **kwargs):
-    return create_engine(
-        url,
-        poolclass=QueuePool,
-        pool_pre_ping=True,
-        pool_size=db_config.pool_size,
-        max_overflow=db_config.max_overflow,
-        pool_timeout=db_config.timeout,
-        connect_args={"connect_timeout": db_config.timeout},
-        **kwargs
-    )
-
-engine = create_engine_with_config(
+# 🚀 Движки
+engine = create_engine(
     db_config.get_master_url(),
+    poolclass=QueuePool,
+    pool_pre_ping=True,
+    pool_size=db_config.pool_size,
+    max_overflow=db_config.max_overflow,
+    pool_timeout=db_config.timeout,
+    connect_args={"connect_timeout": db_config.timeout},
     echo=os.getenv("DB_ECHO", "false").lower() == "true"
 )
 
 replica_engine = None
 if db_config.get_replica_url():
-    replica_engine = create_engine_with_config(db_config.get_replica_url(), echo=False)
+    replica_engine = create_engine(db_config.get_replica_url(), echo=False)
 
-# 🔁 Сессии
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
-ReplicaSessionLocal = sessionmaker(bind=replica_engine if replica_engine else engine, autocommit=False, autoflush=False, expire_on_commit=False)
+ReplicaSessionLocal = sessionmaker(bind=replica_engine or engine, autocommit=False, autoflush=False, expire_on_commit=False)
 ScopedSession = scoped_session(SessionLocal)
 
-# 📦 Контекстный менеджер
 @contextmanager
 def session_scope(replica=False):
-    """Контекст для безопасной работы с сессией БД"""
     session = ReplicaSessionLocal() if replica and replica_engine else SessionLocal()
     try:
         yield session
@@ -93,9 +85,49 @@ def session_scope(replica=False):
     finally:
         session.close()
 
-# 🏗️ Инициализация БД
+# 🧠 Модели
+class SessionModel(Base):
+    __tablename__ = 'sessions'
+    session_id = Column(String, primary_key=True)
+    user_id = Column(String)
+    original_filename = Column(String)
+    processing_status = Column(String)
+    session_data = Column(JSON)
+    vector_path = Column(String)
+    graph_path = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    entities = relationship("SessionEntity", back_populates="session")
+
+class EntityModel(Base):
+    __tablename__ = 'entities'
+    id = Column(Integer, primary_key=True)
+    label = Column(String, nullable=False)
+    text = Column(Text, nullable=False)
+    normalized_value = Column(Text)
+    entity_type = Column(String)
+    language = Column(String)
+    confidence = Column(Float, default=1.0)
+    context = Column(Text)
+    source = Column(Text)
+    metadata = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    sessions = relationship("SessionEntity", back_populates="entity")
+
+class SessionEntity(Base):
+    __tablename__ = 'session_entities'
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String, ForeignKey('sessions.session_id'))
+    entity_id = Column(Integer, ForeignKey('entities.id'))
+
+    session = relationship("SessionModel", back_populates="entities")
+    entity = relationship("EntityModel", back_populates="sessions")
+
+# 🏗️ Инициализация
+
 def init_db():
-    """Создание таблиц и установка расширений"""
     try:
         with engine.connect() as conn:
             if engine.url.drivername.startswith("postgresql"):
@@ -113,7 +145,7 @@ def init_db():
         logger.critical(f"❌ Ошибка подключения к базе данных: {e}")
         raise
 
-# 📈 Метрики Prometheus (опционально)
+# 📈 Метрики
 @listens_for(engine, "connect")
 def track_connections(dbapi_connection, connection_record):
     DB_CONNECTIONS.inc()

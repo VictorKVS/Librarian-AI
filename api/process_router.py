@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.concurrency import run_in_threadpool
 from core.document_processor import DocumentProcessor
 from core.loader import split_into_chunks
+from core.tools.async_tasks import process_document_async, create_status_task
 from models.schemas import (
     ProcessingResponse,
     EntityResponse,
@@ -32,7 +33,7 @@ router = APIRouter(
     }
 )
 
-# Инициализация процессора с заданной конфигурацией
+# Инициализация процессора
 processor = DocumentProcessor(
     max_retries=settings.PROCESSOR_MAX_RETRIES,
     health_check_interval=settings.HEALTH_CHECK_INTERVAL,
@@ -43,89 +44,43 @@ processor = DocumentProcessor(
     "/process",
     response_model=ProcessingResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    responses={
-        400: {"model": ErrorResponse, "description": "Invalid input data"},
-        413: {"model": ErrorResponse, "description": "File too large"},
-        415: {"model": ErrorResponse, "description": "Unsupported media type"},
-        500: {"model": ErrorResponse, "description": "Internal server error"}
-    },
-    summary="Process document synchronously",
-    description="""
-    Complete document processing pipeline:
-    1. File validation and text extraction
-    2. Text splitting into chunks
-    3. Vector embeddings generation
-    4. Named entity recognition
-    
-    Returns processed data immediately.
-    """
+    summary="Process document synchronously"
 )
 async def process_document(
-    file: UploadFile = File(..., description="Document file (TXT, PDF, DOCX)"),
-    min_confidence: float = Query(
-        default=0.7,
-        ge=0.0,
-        le=1.0,
-        description="Minimum confidence score for entity recognition (0.0-1.0)"
-    ),
-    chunk_size: int = Query(
-        default=1000,
-        ge=100,
-        le=5000,
-        description="Maximum characters per text chunk (100-5000)"
-    ),
-    filters: Optional[List[str]] = Query(
-        default=None,
-        description="Filter entities by type (e.g., ORG, PER, LOC)"
-    ),
-    background_tasks: BackgroundTasks
+    file: UploadFile = File(...),
+    min_confidence: float = Query(0.7, ge=0.0, le=1.0),
+    chunk_size: int = Query(1000, ge=100, le=5000),
+    filters: Optional[List[str]] = Query(None),
+    background_tasks: BackgroundTasks = Depends()
 ):
-    """Synchronous processing endpoint with immediate response"""
     try:
-        # Validate file size
         file.file.seek(0, 2)
         file_size = file.file.tell()
         if file_size > settings.MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large. Max size: {settings.MAX_FILE_SIZE} bytes"
-            )
+            raise HTTPException(status_code=413, detail="File too large")
         file.file.seek(0)
 
         start_time = datetime.utcnow()
         file_ext = os.path.splitext(file.filename)[1].lower()
-        
-        # Validate file extension
         if file_ext not in settings.ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=415,
-                detail=f"Unsupported file type. Allowed: {settings.ALLOWED_EXTENSIONS}"
-            )
+            raise HTTPException(status_code=415, detail="Unsupported file type")
 
-        # Securely create temp file
         temp_path = os.path.join(settings.TEMP_DIR, f"{uuid4()}{file_ext}")
-        background_tasks.add_task(clean_temp_files, temp_path)  # Clean up after processing
-        
+        background_tasks.add_task(clean_temp_files, temp_path)
+
         async with aiofiles.open(temp_path, 'wb') as out_file:
             content = await file.read()
             await out_file.write(content)
 
-        # Extract text based on file type
         text = await extract_text(temp_path, file_ext)
-        
-        # Split text into chunks
         chunks = split_into_chunks(text, chunk_size=chunk_size)
         session_id = str(uuid4())
 
-        # Process document
         embeddings, entities = await processor.process_document(
             chunks,
             source_path=file.filename,
             session_id=session_id,
-            extract_params={
-                "min_confidence": min_confidence,
-                "filters": filters
-            }
+            extract_params={"min_confidence": min_confidence, "filters": filters}
         )
 
         return ProcessingResponse(
@@ -134,58 +89,57 @@ async def process_document(
             chunks_processed=len(embeddings),
             entities_found=len(entities),
             entities=[EntityResponse(**e.to_dict()) for e in entities],
-            warnings=[]  # Future placeholder for warnings
+            warnings=[]
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Processing failed: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Document processing failed"
-        )
+        raise HTTPException(status_code=500, detail="Document processing failed")
 
 @router.post(
     "/async-process",
     response_model=AsyncTaskResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Process document asynchronously",
-    description="Initiate background processing and receive task ID for status checking"
+    summary="Process document asynchronously"
 )
 async def async_process_document(
     file: UploadFile = File(...),
     min_confidence: float = Query(0.7),
     chunk_size: int = Query(1000),
     filters: Optional[List[str]] = Query(None),
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks = Depends()
 ):
-    """Asynchronous processing endpoint with task tracking"""
-    # Similar implementation to synchronous, but returns task ID immediately
-    task_id = str(uuid4())
-    return AsyncTaskResponse(
-        task_id=task_id,
-        status_url=f"/api/v1/tasks/{task_id}"
-    )
+    try:
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        temp_path = os.path.join(settings.TEMP_DIR, f"{uuid4()}{file_ext}")
+        background_tasks.add_task(clean_temp_files, temp_path)
+
+        async with aiofiles.open(temp_path, 'wb') as out_file:
+            content = await file.read()
+            await out_file.write(content)
+
+        task = process_document_async.delay(temp_path)
+
+        return AsyncTaskResponse(
+            task_id=task.id,
+            status_url=f"/api/v1/tasks/{task.id}"
+        )
+    except Exception as e:
+        logger.error(f"Async processing failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to start async document processing")
 
 @router.get(
     "/health",
     response_model=HealthStatusResponse,
-    summary="Service health status",
-    description="Check the operational status of all processing components",
-    responses={
-        503: {"model": ErrorResponse, "description": "Service unavailable"}
-    }
+    summary="Service health status"
 )
 async def health_check():
-    """Comprehensive health check endpoint"""
     try:
         status = await processor.check_health()
         if not all([status.vector_store, status.embedder, status.extractor]):
-            raise HTTPException(
-                status_code=503,
-                detail="Service partially unavailable"
-            )
+            raise HTTPException(status_code=503, detail="Service partially unavailable")
         return HealthStatusResponse(
             vector_store=status.vector_store,
             cache=status.cache,
@@ -196,13 +150,9 @@ async def health_check():
         )
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
-        raise HTTPException(
-            status_code=503,
-            detail="Service unavailable"
-        )
+        raise HTTPException(status_code=503, detail="Service unavailable")
 
 async def extract_text(file_path: str, file_ext: str) -> str:
-    """Unified text extraction from supported file formats"""
     try:
         if file_ext == '.txt':
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
@@ -213,13 +163,9 @@ async def extract_text(file_path: str, file_ext: str) -> str:
             return await run_in_threadpool(extract_docx_text, file_path)
     except Exception as e:
         logger.error(f"Text extraction failed: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to extract text from {file_ext} file"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to extract text from {file_ext} file")
 
 def extract_pdf_text(file_path: str) -> str:
-    """Synchronous PDF text extraction with error handling"""
     try:
         from pdfminer.high_level import extract_text
         return extract_text(file_path)
@@ -228,7 +174,6 @@ def extract_pdf_text(file_path: str) -> str:
         raise
 
 def extract_docx_text(file_path: str) -> str:
-    """Synchronous DOCX text extraction with error handling"""
     try:
         from docx import Document
         doc = Document(file_path)

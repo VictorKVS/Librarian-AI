@@ -1,6 +1,7 @@
 # 📄 core/librarian_ai.py
+# 📄 core/librarian_ai.py
 from typing import Dict, List, Optional
-from db.storage import get_session_entities, get_knowledge_graph
+from db.service import get_session_entities, get_knowledge_graph
 from llm.llm_router import query_llm
 from config.secrets import ANALYSIS_PROVIDER
 import logging

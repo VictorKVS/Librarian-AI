@@ -1,0 +1,70 @@
+/api/v1/documents/async-process:
+  post:
+    tags:
+      - Documents
+    summary: Запуск асинхронной обработки документа
+    description: |
+      Загружает документ и запускает фоновую обработку:
+      - Извлечение текста из файла (PDF, DOCX, TXT)
+      - Разбиение текста на чанки
+      - Генерация векторных эмбеддингов
+      - Извлечение именованных сущностей (NER)
+      - Генерация аннотаций
+    operationId: processDocumentAsync
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required:
+              - file
+            properties:
+              file:
+                type: string
+                format: binary
+                description: Документ для обработки (.pdf, .docx, .txt)
+              filename:
+                type: string
+                description: Исходное имя файла (опционально)
+              chunk_size:
+                type: integer
+                default: 1000
+                minimum: 100
+                maximum: 5000
+                description: Максимальное количество символов в чанке
+              min_confidence:
+                type: number
+                format: float
+                default: 0.7
+                minimum: 0.0
+                maximum: 1.0
+                description: Минимальный уровень уверенности для NER
+              filters:
+                type: array
+                items:
+                  type: string
+                description: Фильтрация по типам сущностей (например, ORG, PER, LOC)
+    responses:
+      '202':
+        description: Запрос принят. Возвращает ID задачи.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsyncTaskResponse'
+      '400':
+        description: Неверные входные данные
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ErrorResponse'
+      '413':
+        description: Превышен размер файла
+      '415':
+        description: Неподдерживаемый формат файла
+      '500':
+        description: Ошибка сервера
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ErrorResponse'
