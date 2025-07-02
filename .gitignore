@@ -1,0 +1,28 @@
+# .gitignore
+
+# 🛡️ Переменные окружения (НИКОГДА не коммитить)
+.env
+.env.*
+!deploy/.env.template
+
+# 🧪 Кеши и временные файлы
+__pycache__/
+*.py[cod]
+*.log
+*.sqlite3
+*.db
+*.swp
+
+# 🔍 IDE и редакторы
+.vscode/
+.idea/
+*.iml
+
+# 📦 Установки pip/Poetry
+venv/
+.venv/
+poetry.lock
+*.egg-info/
+
+# 🐳 Docker
+docker-compose.override.yml

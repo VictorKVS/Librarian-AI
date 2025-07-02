@@ -1,0 +1,33 @@
+# config/env_vars.yaml
+# 📘 Справочник: переменные окружения, используемые в Librarian-AI
+
+# === 🔐 API-ключи и внешние сервисы ===
+OPENAI_API_KEY: ${OPENAI_API_KEY}
+HUGGINGFACE_API_TOKEN: ${HUGGINGFACE_API_TOKEN}
+QDRANT_API_KEY: ${QDRANT_API_KEY}
+TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+
+# === 🗃️ Базы данных ===
+POSTGRES_DB: ${POSTGRES_DB}
+POSTGRES_USER: ${POSTGRES_USER}
+POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+POSTGRES_HOST: ${POSTGRES_HOST}
+POSTGRES_PORT: ${POSTGRES_PORT}
+
+# === 🔄 Redis и Celery ===
+REDIS_HOST: ${REDIS_HOST}
+REDIS_PORT: ${REDIS_PORT}
+CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+
+# === ⚙️ Настройки окружения ===
+DEBUG_MODE: ${DEBUG_MODE}
+ENV: ${ENV}
+ENABLE_LOGGING: ${ENABLE_LOGGING}
+ENABLE_GRAPH_DB: ${ENABLE_GRAPH_DB}
+
+# === 🤖 Модели и LLM ===
+DEFAULT_EMBED_MODEL: ${DEFAULT_EMBED_MODEL}
+DEFAULT_LLM_PROVIDER: ${DEFAULT_LLM_PROVIDER}
+LLM_ROUTER_MODE: ${LLM_ROUTER_MODE}
+AGENT_TIMEOUT: ${AGENT_TIMEOUT}

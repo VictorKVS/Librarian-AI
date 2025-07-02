@@ -1,0 +1,83 @@
+# 📄 Файл: config.yaml | Расположение: librarian_ai/config/config.yaml
+# 📌 Назначение: конфигурация агента Librarian AI (название зафиксировано)
+# 📥 Получает: настройки от разработчика или пользователя (LLM, пути, API)
+# 📤 Передаёт: параметры в основной код и модули ядра
+#  Файл config.yaml создан. Название агента зафиксировано как Librarian AI, переименование не предусмотрено, 
+#чтобы обеспечить стабильность в связке с другими агентами и ядром фермы.
+# Название агента — зафиксировано как Librarian AI, переименование не предусмотрено
+name: librarian_ai
+version: 0.3
+role: document_librarian
+
+# LLM-провайдер по умолчанию
+llm_provider: yandex_gpt
+
+# Пути к ресурсам
+paths:
+  database: db/librarian.db
+  vector_store: knowledge/vector_store/
+  logs: logs/log.txt
+
+# Включение дополнительных агентов
+integrations:
+  osint_plus: true
+  factory: true
+
+# Язык по умолчанию
+language: ru
+
+# Параметры приложения
+app:
+  name: "Librarian AI"
+  version: "0.1.0"
+  debug: true
+  enable_docs: true
+
+database:
+  dsn: "postgresql://user:pass@localhost:5432/librarian"
+  pool_size: 20
+
+security:
+  secret_key: "ВАШ_СЕКРЕТ"
+  algorithm: "HS256"
+  token_expiry: 3600
+  cors_origins:
+    - "*"
+
+parsing:
+  max_file_size: 10485760
+  chunk_size: 1000
+  chunk_overlap: 100
+  supported_languages:
+    - "ru"
+    - "en"
+
+embeddings:
+  model: "all-MiniLM-L6-v2"
+  device: "cpu"
+
+search:
+  index_path: "knowledge/vector_store/index.faiss"
+  keyword_index: "knowledge/keyword_index"
+
+summarization:
+  model: "t5-small"
+
+ner:
+  models:
+    - "spacy-en"
+    - "natasha-ru"
+
+tasks:
+  broker_url: "redis://localhost:6379/0"
+  result_backend: "redis://localhost:6379/1"
+
+telegram:
+  token: "ВАШ_TELEGRAM_TOKEN"
+
+web:
+  host: "0.0.0.0"
+  port: 8001
+
+erp:
+  connection_string: "http://user:pass@erp-server/api"

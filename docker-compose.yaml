@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # 📦 PostgreSQL + pgvector
+  postgres:
+    image: ankane/pgvector
+    container_name: librarian_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: librarian
+      POSTGRES_PASSWORD: secretpass
+      POSTGRES_DB: librarian_db
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  # ⚡ Redis (кэш, очереди, PubSub)
+  redis:
+    image: redis:6.2-alpine
+    container_name: librarian_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # 🔍 Qdrant (векторная БД)
+  qdrant:
+    image: qdrant/qdrant
+    container_name: librarian_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # 🌼 Flower для мониторинга задач Celery
+  flower:
+    image: mher/flower:0.9.7
+    container_name: librarian_flower
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    command: ["celery", "flower", "--broker=redis://redis:6379/0"]
+    depends_on:
+      - redis
+
+  # 🌐 Web-интерфейс + REST API
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: librarian_web
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      DB_TYPE: postgresql
+      DB_HOST: postgres
+      DB_NAME: librarian_db
+      DB_USER: librarian
+      DB_PASSWORD: secretpass
+      REDIS_HOST: redis
+      QDRANT_HOST: qdrant
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+      - worker
+
+  # 🔄 Фоновый воркер (Celery)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: librarian_worker
+    command: celery -A tasks.document_processor worker --loglevel=info --concurrency=4
+    volumes:
+      - .:/app
+      - celery_logs:/var/log
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      DB_HOST: postgres
+      DB_USER: librarian
+      DB_PASSWORD: secretpass
+    depends_on:
+      - redis
+      - postgres
+      - qdrant
+
+volumes:
+  pg_data:
+  qdrant_data:
+  redis_data:
+  celery_logs:
