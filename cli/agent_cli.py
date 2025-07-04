@@ -11,6 +11,9 @@ from utils.file_utils import process_directory_recursively
 from db.storage import session_scope
 from db.models import KnowledgeDoc
 
+# 🧠 Поддержка генерации через локальную LLM
+from providers.mistral_local import MistralLocal
+
 def process_file(path: str):
     print(f"📄 Обработка файла: {path}")
     docs = load_file_to_knowledge(path)
@@ -38,16 +41,28 @@ def process_folder(folder: str):
         for doc in all_docs:
             extract_entities(session, doc)
 
+def run_mistral_cli():
+    print("🧠 Запуск локальной LLM (Mistral)...")
+    llm = MistralLocal()
+    while True:
+        prompt = input(">>> ")
+        if prompt.lower() in ("exit", "quit"): break
+        response = llm.generate(prompt)
+        print(response)
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="📚 Обработка файла или папки с документами")
+    parser = argparse.ArgumentParser(description="📚 Обработка файла или папки с документами или запуск LLM")
     parser.add_argument("--file", type=str, help="Путь к файлу")
     parser.add_argument("--folder", type=str, help="Путь к директории")
+    parser.add_argument("--llm", action="store_true", help="Запустить локальную LLM Mistral")
 
     args = parser.parse_args()
 
-    if args.file:
+    if args.llm:
+        run_mistral_cli()
+    elif args.file:
         process_file(args.file)
     elif args.folder:
         process_folder(args.folder)
     else:
-        print("⚠️ Укажите --file или --folder")
+        print("⚠️ Укажите --file, --folder или --llm")
