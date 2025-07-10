@@ -1,0 +1,10 @@
+name: osint_plus
+description: Агент для сбора, обогащения и экспорта OSINT данных.
+version: 1.0
+entry_point: collector.collect
+configurable: true
+parameters:
+  - name: sync
+    type: bool
+    default: true
+    description: Запускать синхронно или асинхронно
