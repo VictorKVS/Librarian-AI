@@ -230,12 +230,13 @@ Librarian-AI/
 ├── tests/                              # ✅ Автоматическое тестирование
 │   ├──__pycache__/                                                                      (существующий)
 │   ├── __init__.py                     # Позволяет Python трактовать папку как пакет       (существующий)
+│   ├──load_test.py                                                                       (существующий)
 │   ├── test_embedder                                                                      (существующий)
-│   ├── test_llm_router.py              # Тест маршрутизации LLM                       (существующий)
-│   ├── test_llm_router_pro.py                                                              (существующий)
+│   ├── test_gigachat.py                                                                   (существующий)
+│   ├── test_llm_router_pro.py                 # Тест маршрутизации LLM                  (существующий)
 │   ├── test_migrations.py                                                              (существующий)
-│   ├── test_extractor.py               # Тест извлекателей сущностей                  (НЕТ)
-│   └──test_models.py                  # Тест SQLAlchemy моделей          (НЕТ)
+│   ├── test_extractor.py               # Тест извлекателей сущностей                     (НЕТ)
+│   └──test_models.py                  # Тест SQLAlchemy моделей                          (НЕТ)
 │
 │   
 │
