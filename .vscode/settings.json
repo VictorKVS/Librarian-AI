@@ -1,0 +1,9 @@
+{
+  // Путь к интерпретатору Python
+  "python.defaultInterpreterPath": "${workspaceFolder}/venv/Scripts/python.exe",
+
+  // Пути для автодополнения и импорта модулей
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/Librarian_AI"
+  ]
+}
