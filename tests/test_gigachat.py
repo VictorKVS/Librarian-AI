@@ -75,6 +75,15 @@ async def test_degraded_mode():
     response = await llm.cached_ask([{"role": "user", "content": "No data"}])
     assert "Degraded Response" in response
 
+@pytest.mark.asyncio
+async def test_enable_disable_degraded_mode():
+    llm = GigaChatLLM()
+    assert not llm.degraded_mode
+    llm.enable_degraded_mode()
+    assert llm.degraded_mode
+    llm.disable_degraded_mode()
+    assert not llm.degraded_mode
+
 @patch("your_module.cloudwatch.put_metric_data")
 def test_push_to_cloudwatch(mock_put):
     push_to_cloudwatch("TestMetric", 123.45, dimensions=[{"Name": "Environment", "Value": "test"}])
